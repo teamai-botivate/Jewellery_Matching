@@ -830,5 +830,37 @@ async def rembg_status():
     }
 
 
+@app.get("/admin/uploads")
+async def list_admin_uploads():
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT filename, image_path, category FROM jewellery WHERE upload_type='admin' ORDER BY id DESC"
+        ).fetchall()
+    return [{"filename": r[0], "image_path": r[1], "category": r[2]} for r in rows]
+
+
+@app.delete("/admin/delete/{filename}")
+async def delete_upload(filename: str):
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT image_path FROM jewellery WHERE filename=?", (filename,)
+        ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Item not found")
+    image_path = row[0]
+    point_id = str(uuid.uuid5(uuid.NAMESPACE_URL, image_path))
+    try:
+        qdrant.delete(collection_name=COLLECTION_NAME, points_selector=[point_id])
+    except Exception as exc:
+        log.warning("Qdrant delete failed for %s: %s", filename, exc)
+    with get_db() as conn:
+        conn.execute("DELETE FROM jewellery WHERE filename=?", (filename,))
+        conn.commit()
+    local_file = UPLOADS_DIR / filename
+    if local_file.exists():
+        local_file.unlink()
+    return {"deleted": filename}
+
+
 if __name__ == "__main__":
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)

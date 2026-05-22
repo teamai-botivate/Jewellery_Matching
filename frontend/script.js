@@ -435,7 +435,7 @@ function renderResults(results) {
     card.innerHTML = `
       <div style="overflow:hidden;height:200px">
         <img src="${imgSrc}" alt="${item.filename}"
-             onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22200%22><rect fill=%22%23111%22 width=%22200%22 height=%22200%22/><text x=%2250%25%22 y=%2250%25%22 fill=%22%23444%22 text-anchor=%22middle%22 dominant-baseline=%22middle%22 font-size=%2232%22>&#128444;</text></svg>'"
+             onerror="this.onerror=null;this.style.cssText='width:100%;height:100%;object-fit:contain;background:#1a1a1a;opacity:0.4;filter:grayscale(1)';this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIj48cmVjdCBmaWxsPSIjMjIyIiB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIvPjx0ZXh0IHg9IjUwJSIgeT0iNDUlIiBmaWxsPSIjNTU1IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiBmb250LXNpemU9IjQ4Ij7wn5qEPC90ZXh0Pjx0ZXh0IHg9IjUwJSIgeT0iNjUlIiBmaWxsPSIjNDQ0IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiBmb250LXNpemU9IjEyIj5JbWFnZSB1bmF2YWlsYWJsZTwvdGV4dD48L3N2Zz4='"
              loading="lazy" />
       </div>
       <div class="result-card-body">
@@ -550,6 +550,52 @@ async function adminUpload(file) {
     hideEl(progress);
     showError('Upload failed: ' + e.message);
     btn.disabled = false;
+  }
+}
+
+// ── Manage Uploads ────────────────────────────────────────────────────────────
+
+async function loadUploadedItems() {
+  const container = $('uploads-list');
+  container.innerHTML = '<p style="color:#888">Loading...</p>';
+  try {
+    const items = await fetch(`${API}/admin/uploads`).then(r => r.json());
+    if (!items.length) {
+      container.innerHTML = '<p style="color:#888">No admin-uploaded items found.</p>';
+      return;
+    }
+    container.innerHTML = '';
+    items.forEach(item => {
+      const isLocal = item.image_path.startsWith('/uploads/');
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:0.75rem;padding:0.5rem;background:#111;border-radius:8px;border:1px solid #222';
+      row.innerHTML = `
+        <div style="flex:1;min-width:0">
+          <div style="font-size:0.8rem;color:#ccc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${item.filename}</div>
+          <div style="font-size:0.7rem;color:${isLocal ? '#f87171' : '#4ade80'}">${isLocal ? '⚠ Local (will break on restart)' : '✓ Cloudinary'} · ${item.category}</div>
+        </div>
+        <button onclick="deleteUpload('${item.filename}', this)" style="background:#7f1d1d;color:#fca5a5;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:0.75rem;flex-shrink:0">Delete</button>
+      `;
+      container.appendChild(row);
+    });
+  } catch (e) {
+    container.innerHTML = `<p style="color:#f87171">Error: ${e.message}</p>`;
+  }
+}
+
+async function deleteUpload(filename, btn) {
+  if (!confirm(`Delete "${filename}"? This removes it from search results.`)) return;
+  btn.disabled = true;
+  btn.textContent = '...';
+  try {
+    const res = await fetch(`${API}/admin/delete/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    btn.closest('div[style]').remove();
+    await loadStats();
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Delete';
+    showError('Delete failed: ' + e.message);
   }
 }
 
