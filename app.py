@@ -515,6 +515,46 @@ def index_single_image(image_path: Path, upload_type: str = "dataset") -> dict:
     }
 
 # ---------------------------------------------
+# Qdrant → SQLite sync (runs on fresh deployments where SQLite is empty)
+# ---------------------------------------------
+def sync_sqlite_from_qdrant():
+    try:
+        with get_db() as conn:
+            if conn.execute("SELECT COUNT(*) FROM jewellery").fetchone()[0] > 0:
+                return  # SQLite already populated
+        vec_count = qdrant_count()
+        if vec_count == 0:
+            return
+        log.info("SQLite empty, Qdrant has %d vectors — syncing metadata...", vec_count)
+        offset = None
+        synced = 0
+        while True:
+            points, next_offset = qdrant.scroll(
+                collection_name=COLLECTION_NAME,
+                limit=100,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            for pt in points:
+                p = pt.payload or {}
+                with get_db() as conn:
+                    conn.execute(
+                        "INSERT OR IGNORE INTO jewellery (filename, image_path, category, upload_type) VALUES (?,?,?,?)",
+                        (p.get("filename", ""), p.get("image_path", ""),
+                         p.get("category", "uncategorized"), p.get("upload_type", "dataset")),
+                    )
+                    conn.commit()
+                synced += 1
+            if next_offset is None:
+                break
+            offset = next_offset
+        log.info("Synced %d records from Qdrant → SQLite", synced)
+    except Exception as exc:
+        log.warning("Qdrant→SQLite sync failed (non-fatal): %s", exc)
+
+
+# ---------------------------------------------
 # Startup
 # ---------------------------------------------
 @app.on_event("startup")
@@ -523,6 +563,7 @@ async def startup_event():
     init_feedback_db()
     load_clip_model()
     init_qdrant()
+    sync_sqlite_from_qdrant()
     log.info(
         "System ready. device=%s  vectors=%d  rembg=%s",
         device, qdrant_count(), REMBG_AVAILABLE,
