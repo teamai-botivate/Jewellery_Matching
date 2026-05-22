@@ -2,32 +2,17 @@ services:
   - type: web
     name: gemsearch
     runtime: python
-    buildCommand: >
-      pip install torch==2.2.2 torchvision==0.17.2
-      --index-url https://download.pytorch.org/whl/cpu &&
-      pip install -r requirements.txt
+    buildCommand: "pip install torch==2.2.2 torchvision==0.17.2 --index-url https://download.pytorch.org/whl/cpu && pip install -r requirements.txt"
     startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
-    plan: free
 
     envVars:
       - key: QDRANT_URL
         value: https://e6fff43d-09ee-4f26-bf4d-cef8af87f057.us-west-1-0.aws.cloud.qdrant.io
-
-      # QDRANT_API_KEY — set this manually in Render dashboard (Environment tab)
-      # Do NOT add the value here. Go to: Render > gemsearch > Environment > Add Variable
-      # Key: QDRANT_API_KEY   Value: <your Qdrant Cloud API key>
       - key: QDRANT_API_KEY
         sync: false
-
       - key: CLIP_MODEL
         value: ViT-B-32
-
       - key: CLIP_PRETRAINED
         value: openai
-
-      # Disable rembg on Render — index vectors locally with rembg=true, then deploy
       - key: REMBG_PREPROCESSING
         value: "false"
-
-      - key: PYTHON_VERSION
-        value: "3.11.0"
