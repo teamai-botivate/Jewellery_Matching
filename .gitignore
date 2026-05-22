@@ -12,7 +12,6 @@ env/
 
 # Data / runtime
 uploads/
-dataset/
 qdrant_storage/
 jewellery.db
 setup_dataset.log
