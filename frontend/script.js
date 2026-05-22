@@ -420,7 +420,7 @@ function renderResults(results) {
     card.className = 'result-card';
     card.style.animationDelay = `${i * 0.05}s`;
 
-    const imgSrc     = item.image_url.startsWith('/') ? item.image_url : '/' + item.image_url;
+    const imgSrc     = item.image_url.startsWith('http') ? item.image_url : (item.image_url.startsWith('/') ? item.image_url : '/' + item.image_url);
     const pct        = item.similarity ?? 0;
     const catText    = (item.category || 'unknown').replace(/_/g, ' ');
     const metalColor = item.metal_color || 'other';
