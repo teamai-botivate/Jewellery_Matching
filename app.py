@@ -599,15 +599,12 @@ async def search(
         detected_cat, cat_confidence = auto_detect_category(embedding)
         cat_source = "auto"
 
-    # Only apply auto filter when confidence is high enough
-    apply_cat = detected_cat if cat_confidence >= CAT_CONFIDENCE_MIN else None
+    apply_cat = None  # filters removed from UI — search across all categories
 
-    # ── Step 2: filtered search with similarity threshold ──
+    # ── Step 2: search with similarity threshold ──
     hits = qdrant_search(
         embedding,
         top_k=TOP_K * 3,          # fetch 3× to have room after threshold filtering
-        metal_color=metal_color,
-        category=apply_cat,
     )
 
     # Apply similarity threshold — drop weak/irrelevant matches

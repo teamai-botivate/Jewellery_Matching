@@ -28,23 +28,6 @@ async function loadStats() {
   }
 }
 
-function buildCategoryFilter(categories) {
-  const bar = $('cat-filter');
-  // Keep the "All" button, remove old dynamic ones
-  bar.querySelectorAll('[data-cat]:not([data-cat="all"])').forEach(b => b.remove());
-  (categories || []).forEach(c => {
-    const btn = document.createElement('button');
-    btn.className   = 'pill-cat';
-    btn.dataset.cat = c.name;
-    btn.textContent = c.name + ' (' + c.count + ')';
-    btn.addEventListener('click', () => {
-      bar.querySelectorAll('.pill-cat').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      if (searchFile) runSearch();
-    });
-    bar.appendChild(btn);
-  });
-}
 
 function renderStats(data) {
   $('stat-total').textContent   = data.total   ?? '--';
@@ -54,9 +37,6 @@ function renderStats(data) {
   $('s-total').textContent   = data.total   ?? '--';
   $('s-vectors').textContent = data.qdrant_vectors ?? '--';
   $('s-cats').textContent    = (data.categories?.length) ?? '--';
-
-  // Populate category filter pills from live data
-  buildCategoryFilter(data.categories);
 
   const breakdown = $('category-breakdown');
   breakdown.innerHTML = '';
@@ -267,24 +247,6 @@ function showPreview(file, innerEl, previewWrapEl, previewImgEl) {
   reader.readAsDataURL(file);
 }
 
-// ── Category "All" pill static click ─────────────────────────────────────────
-
-document.querySelector('[data-cat="all"]').addEventListener('click', function () {
-  $('cat-filter').querySelectorAll('.pill-cat').forEach(b => b.classList.remove('active'));
-  this.classList.add('active');
-  if (searchFile) runSearch();
-});
-
-// ── Metal color filter pills ──────────────────────────────────────────────────
-
-document.querySelectorAll('.pill-filter').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.pill-filter').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    if (searchFile) runSearch();
-  });
-});
-
 // ── Search drop zone ──────────────────────────────────────────────────────────
 
 // Simpler click handler for the search drop zone
@@ -361,9 +323,7 @@ async function runSearch() {
   showEl($('search-loading'));
   $('search-btn').disabled = true;
 
-  const useCrop    = $('crop-toggle').checked && cropperInstance;
-  const metalColor = document.querySelector('.pill-filter.active')?.dataset.color || 'all';
-  const category   = document.querySelector('.pill-cat.active')?.dataset.cat || 'all';
+  const useCrop = $('crop-toggle').checked && cropperInstance;
 
   $('search-loading-text').textContent = 'Analysing image with OpenCLIP and searching vectors...';
 
@@ -386,11 +346,7 @@ async function runSearch() {
     const form = new FormData();
     form.append('file', fileToSend);
 
-    const params = new URLSearchParams();
-    if (metalColor && metalColor !== 'all') params.set('metal_color', metalColor);
-    if (category   && category   !== 'all') params.set('category',    category);
-    const qs  = params.toString();
-    const url = `${API}/search${qs ? '?' + qs : ''}`;
+    const url = `${API}/search`;
     const res = await fetch(url, { method: 'POST', body: form });
 
     if (!res.ok) {
@@ -402,7 +358,6 @@ async function runSearch() {
     hideEl($('search-loading'));
     renderResults(data.results);
     renderDetectionBar(data);
-    highlightDetectedCategory(data.cat_applied, data.cat_source);
   } catch (e) {
     hideEl($('search-loading'));
     showError('Search failed: ' + e.message);
@@ -423,13 +378,10 @@ function renderDetectionBar(data) {
     return;
   }
 
-  const cat    = data.detected_category.replace(/_/g, ' ');
-  const conf   = data.cat_confidence + '%';
-  const source = data.cat_source === 'manual' ? ' (manual)' : '';
+  const cat  = data.detected_category.replace(/_/g, ' ');
+  const conf = data.cat_confidence + '%';
 
-  label.innerHTML = source
-    ? `<span class="det-label">Filtered by:</span> <span class="det-cat">${cat}</span> <span class="det-manual">manual</span>`
-    : `<span class="det-label">Auto-detected:</span> <span class="det-cat">${cat}</span> <span class="det-conf">${conf} confidence</span>`;
+  label.innerHTML = `<span class="det-label">Detected:</span> <span class="det-cat">${cat}</span> <span class="det-conf">${conf} confidence</span>`;
 
   if (data.fallback_used) {
     fallback.textContent = 'Low dataset coverage — showing best available matches';
@@ -441,15 +393,6 @@ function renderDetectionBar(data) {
   showEl(bar);
 }
 
-function highlightDetectedCategory(catApplied, source) {
-  if (!catApplied || source === 'manual') return;
-  // Auto-highlight the category pill that was applied
-  const allPills = $('cat-filter').querySelectorAll('.pill-cat');
-  allPills.forEach(b => b.classList.remove('active'));
-  const match = [...allPills].find(b => b.dataset.cat === catApplied);
-  if (match) match.classList.add('active');
-  else $('cat-filter').querySelector('[data-cat="all"]')?.classList.add('active');
-}
 
 // ── Results ───────────────────────────────────────────────────────────────────
 
