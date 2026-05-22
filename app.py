@@ -205,25 +205,20 @@ def detect_metal_color(pil_image: Image.Image) -> str:
         return "other"
 
 
-def auto_detect_category(query_vector: list) -> tuple[str, float]:
+def _infer_category_from_hits(hits: list) -> tuple[str, float]:
     """
-    k-NN category voting — purely image-based, no text.
-    Runs a broad search, weights each hit by score², sums per category.
-    Returns (dominant_category, confidence_0_to_1).
-    Confidence = dominant_score / total_score.
+    Infer dominant category from already-fetched search results.
+    Weights each hit by score² so near-exact matches dominate the vote.
+    No extra Qdrant call required.
     """
     from collections import defaultdict
-    hits = qdrant_search(query_vector, top_k=TOP_K_BROAD)
     if not hits:
         return "all", 0.0
-
     cat_scores: dict = defaultdict(float)
     for h in hits:
         cat = h.payload.get("category", "unknown")
-        # score² heavily penalises weak matches — a 0.95 hit counts 4× more than 0.68 hit
         cat_scores[cat] += h.score ** 2
-
-    total = sum(cat_scores.values())
+    total    = sum(cat_scores.values())
     dominant = max(cat_scores, key=cat_scores.get)
     confidence = cat_scores[dominant] / total if total > 0 else 0.0
     return dominant, round(confidence, 3)
@@ -573,15 +568,10 @@ async def stats():
 
 
 @app.post("/search")
-async def search(
-    file:        UploadFile    = File(...),
-    metal_color: Optional[str] = Query(default=None),   # gold | silver | rose_gold | all
-    category:    Optional[str] = Query(default=None),   # manual override; "auto" = let system decide
-):
+async def search(file: UploadFile = File(...)):
     data = await file.read()
     img  = validate_and_open(data, raise_http=True)
 
-    # System-wide rembg — must match indexing mode
     rembg_applied = False
     if REMBG_PREPROCESSING and REMBG_AVAILABLE:
         img           = remove_background(img)
@@ -589,34 +579,40 @@ async def search(
 
     embedding = generate_embedding(img)
 
-    # ── Step 1: auto category detection (k-NN voting, purely image-based) ──
-    if category and category not in ("auto", "all", ""):
-        # Manual override from user — respect it
-        detected_cat   = category
-        cat_confidence = 1.0
-        cat_source     = "manual"
+    # ── Single Qdrant call — no double round-trip ──────────────────────────
+    # Fetch extra so re-ranking has enough candidates
+    hits = qdrant_search(embedding, top_k=TOP_K * 3)
+
+    if not hits:
+        return {"results": [], "total_found": 0, "rembg_active": rembg_applied,
+                "detected_category": "all", "cat_confidence": 0, "fallback_used": False}
+
+    # ── Infer dominant category from results (free — uses already-fetched hits) ──
+    detected_cat, cat_confidence = _infer_category_from_hits(hits)
+
+    # ── Smart re-rank ──────────────────────────────────────────────────────
+    # Always keep top-3 by raw score (guarantees exact/near-exact match stays first).
+    # Fill remaining slots: dominant-category items first, then others — so similar
+    # type bubbles up without hard-filtering anything out.
+    N_EXACT   = 3
+    top_exact = hits[:N_EXACT]
+    rest      = hits[N_EXACT:]
+
+    if cat_confidence >= CAT_CONFIDENCE_MIN:
+        dom_rest   = [h for h in rest if h.payload.get("category") == detected_cat]
+        other_rest = [h for h in rest if h.payload.get("category") != detected_cat]
+        reranked   = top_exact + dom_rest + other_rest
     else:
-        detected_cat, cat_confidence = auto_detect_category(embedding)
-        cat_source = "auto"
+        reranked = hits  # low confidence → trust Qdrant cosine ordering
 
-    apply_cat = None  # filters removed from UI — search across all categories
-
-    # ── Step 2: search with similarity threshold ──
-    hits = qdrant_search(
-        embedding,
-        top_k=TOP_K * 3,          # fetch 3× to have room after threshold filtering
-    )
-
-    # Apply similarity threshold — drop weak/irrelevant matches
-    hits_filtered = [h for h in hits if h.score >= SIMILARITY_THRESHOLD]
-
-    # If threshold removed everything, fall back to top results without threshold
+    # ── Similarity threshold — drop clearly unrelated results ──────────────
+    hits_above = [h for h in reranked if h.score >= SIMILARITY_THRESHOLD]
     fallback_used = False
-    if not hits_filtered and hits:
-        hits_filtered = hits[:TOP_K]
+    if not hits_above:
+        hits_above    = reranked
         fallback_used = True
 
-    final_hits = hits_filtered[:TOP_K]
+    final_hits = hits_above[:TOP_K]
 
     results = [
         {
@@ -636,11 +632,7 @@ async def search(
         "rembg_active":      rembg_applied,
         "detected_category": detected_cat,
         "cat_confidence":    round(cat_confidence * 100, 1),
-        "cat_source":        cat_source,
-        "cat_applied":       apply_cat,
         "fallback_used":     fallback_used,
-        "metal_filter":      metal_color,
-        "threshold":         round(SIMILARITY_THRESHOLD * 100),
     }
 
 
