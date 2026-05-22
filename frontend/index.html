@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GemSearch · AI Jewellery Visual Search</title>
+  <link rel="stylesheet" href="/frontend/style.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+<!-- NAVBAR -->
+<nav class="navbar">
+  <div class="nav-brand">
+    <span class="brand-icon">&#9672;</span>
+    <span class="brand-name">GemSearch</span>
+    <span class="brand-tag">AI</span>
+  </div>
+  <div class="nav-links">
+    <a href="#search-section">Search</a>
+    <a href="#admin-section">Admin</a>
+    <a href="#stats-section">Stats</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-glow"></div>
+  <div class="hero-content">
+    <div class="hero-badge">Powered by OpenCLIP ViT-B-32</div>
+    <h1 class="hero-title">
+      Find Jewellery by<br/>
+      <span class="gradient-text">Visual Similarity</span>
+    </h1>
+    <p class="hero-subtitle">
+      Upload any jewellery image. Crop to the exact piece, remove background noise —
+      our AI finds visually similar jewellery instantly.
+    </p>
+    <div class="hero-stats" id="hero-stats">
+      <div class="stat-pill"><span id="stat-total">--</span> Images</div>
+      <div class="stat-pill"><span id="stat-cats">--</span> Categories</div>
+      <div class="stat-pill"><span id="stat-vectors">--</span> Vectors</div>
+    </div>
+  </div>
+  <div class="hero-visual">
+    <div class="floating-card fc1">&#128141;</div>
+    <div class="floating-card fc2">&#128222;</div>
+    <div class="floating-card fc3">&#128081;</div>
+    <div class="floating-card fc4">&#128142;</div>
+  </div>
+</section>
+
+<!-- SEARCH SECTION -->
+<section class="section" id="search-section">
+  <div class="section-header">
+    <h2>Visual Search</h2>
+    <p>Upload a jewellery image to find similar pieces</p>
+  </div>
+
+  <div class="upload-container" id="search-drop-zone">
+    <input type="file" id="search-file-input" accept="image/*" hidden />
+
+    <!-- Empty state -->
+    <div class="upload-inner" id="search-upload-inner">
+      <div class="upload-icon">&#128269;</div>
+      <p class="upload-title">Drop your jewellery image here</p>
+      <p class="upload-sub">or click to browse &middot; JPG, PNG, WEBP &middot; max 10 MB</p>
+      <button class="btn btn-primary" onclick="document.getElementById('search-file-input').click()">
+        Choose Image
+      </button>
+    </div>
+
+    <!-- Preview state -->
+    <div class="upload-preview-wrap hidden" id="search-preview-wrap">
+      <!-- Normal image preview -->
+      <div id="normal-preview-wrap">
+        <img id="search-preview-img" alt="Preview" />
+      </div>
+      <!-- Cropper.js container (hidden until crop toggled on) -->
+      <div id="crop-preview-wrap" class="hidden">
+        <div class="crop-toolbar" onclick="event.stopPropagation()">
+          <span class="crop-toolbar-label">Ratio:</span>
+          <button class="btn-crop-tool active" data-ratio="free">Free</button>
+          <button class="btn-crop-tool" data-ratio="1">1:1</button>
+          <button class="btn-crop-tool" data-ratio="4/3">4:3</button>
+          <button class="btn-crop-tool" data-ratio="16/9">16:9</button>
+          <div class="crop-toolbar-sep"></div>
+          <button class="btn-crop-tool" id="crop-rotate-l" title="Rotate left">&#8634; 90&deg;</button>
+          <button class="btn-crop-tool" id="crop-rotate-r" title="Rotate right">&#8635; 90&deg;</button>
+          <button class="btn-crop-tool" id="crop-flip-h" title="Flip horizontal">&#8596;</button>
+          <div class="crop-toolbar-sep"></div>
+          <button class="btn-crop-tool" id="crop-zoom-in" title="Zoom in">+</button>
+          <button class="btn-crop-tool" id="crop-zoom-out" title="Zoom out">-</button>
+          <button class="btn-crop-tool crop-reset-btn" id="crop-reset-btn" title="Reset">Reset</button>
+        </div>
+        <div class="crop-canvas-area">
+          <img id="crop-img" alt="Crop preview" />
+        </div>
+      </div>
+      <!-- Toggle controls -->
+      <div class="search-controls" onclick="event.stopPropagation()">
+        <label class="toggle-label">
+          <input type="checkbox" id="crop-toggle" />
+          <span class="toggle-track"></span>
+          <span class="toggle-text">Crop Jewellery Region</span>
+        </label>
+        <span class="rembg-badge" id="rembg-badge">&#9679; BG Removal: checking...</span>
+      </div>
+      <!-- Action buttons -->
+      <div class="preview-footer" onclick="event.stopPropagation()">
+        <button class="btn btn-primary" id="search-btn">
+          <span class="btn-icon">&#9889;</span> Search Similar
+        </button>
+        <button class="btn btn-ghost" id="search-clear-btn">Clear</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Category filter (dynamic) -->
+  <div class="metal-filter" id="cat-filter">
+    <span class="filter-label">Category:</span>
+    <button class="pill-cat active" data-cat="all">All</button>
+    <!-- populated by JS from /stats -->
+  </div>
+
+  <!-- Metal color filter -->
+  <div class="metal-filter" id="metal-filter">
+    <span class="filter-label">Metal:</span>
+    <button class="pill-filter active" data-color="all">All Metals</button>
+    <button class="pill-filter gold"      data-color="gold">&#9679; Gold</button>
+    <button class="pill-filter silver"    data-color="silver">&#9679; Silver</button>
+    <button class="pill-filter rose-gold" data-color="rose_gold">&#9679; Rose Gold</button>
+  </div>
+
+  <!-- Loading state -->
+  <div class="loading-state hidden" id="search-loading">
+    <div class="spinner"></div>
+    <p id="search-loading-text">Analysing image with OpenCLIP and searching vectors...</p>
+  </div>
+
+  <!-- Results -->
+  <div class="results-header hidden" id="results-header">
+    <h3>Search Results <span id="results-count" class="badge"></span></h3>
+    <span class="feedback-hint">Rate results to improve accuracy &darr;</span>
+  </div>
+
+  <!-- Auto-detection info bar -->
+  <div class="detection-bar hidden" id="detection-bar">
+    <span id="detection-label"></span>
+    <span id="detection-fallback" class="fallback-note hidden"></span>
+  </div>
+
+  <div class="results-grid" id="results-grid"></div>
+</section>
+
+<!-- ADMIN SECTION -->
+<section class="section admin-section" id="admin-section">
+  <div class="section-header">
+    <h2>Admin Panel</h2>
+    <p>Upload new jewellery to the searchable database</p>
+  </div>
+
+  <div class="admin-grid">
+    <!-- Upload Card -->
+    <div class="glass-card admin-upload-card">
+      <h3 class="card-title">Upload New Jewellery</h3>
+      <div class="upload-container" id="admin-drop-zone">
+        <input type="file" id="admin-file-input" accept="image/*" hidden />
+        <div class="upload-inner" id="admin-upload-inner">
+          <div class="upload-icon">&#128228;</div>
+          <p class="upload-title">Drop image here</p>
+          <p class="upload-sub">or click to browse</p>
+          <button class="btn btn-secondary" onclick="document.getElementById('admin-file-input').click()">
+            Choose File
+          </button>
+        </div>
+        <div class="upload-preview-wrap hidden" id="admin-preview-wrap">
+          <img id="admin-preview-img" alt="Preview" />
+          <div class="preview-overlay">
+            <span style="color:var(--text-muted);font-size:0.8rem">Ready to upload</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Category</label>
+        <select id="admin-category" class="form-select">
+          <option value="rings">Rings</option>
+          <option value="necklaces">Necklaces</option>
+          <option value="bracelets">Bracelets</option>
+          <option value="earrings">Earrings</option>
+          <option value="pendants">Pendants</option>
+          <option value="bangles">Bangles</option>
+          <option value="chains">Chains</option>
+          <option value="anklets">Anklets</option>
+          <option value="uncategorized">Uncategorized</option>
+        </select>
+      </div>
+
+      <button class="btn btn-primary full-width" id="admin-upload-btn" disabled>
+        <span class="btn-icon">&#10024;</span> Generate Embedding &amp; Upload
+      </button>
+
+      <div class="upload-progress hidden" id="admin-progress">
+        <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+        <p id="progress-text">Processing...</p>
+      </div>
+
+      <div class="success-banner hidden" id="admin-success">
+        <span>&#9989;</span> Image indexed and instantly searchable!
+      </div>
+    </div>
+
+    <!-- Index Dataset Card -->
+    <div class="glass-card">
+      <h3 class="card-title">Index Dataset</h3>
+      <p class="card-desc">
+        Place images in <code>dataset/</code> folder (organise into subfolders by category).
+        Click below to scan and embed all images.
+      </p>
+      <div class="folder-tree">
+        <div class="tree-item">&#128193; dataset/</div>
+        <div class="tree-item indent">&#128193; rings/</div>
+        <div class="tree-item indent2">&#128444; image1.jpg</div>
+        <div class="tree-item indent">&#128193; necklaces/</div>
+        <div class="tree-item indent2">&#128444; image2.png</div>
+      </div>
+      <button class="btn btn-secondary full-width" id="index-dataset-btn">
+        <span class="btn-icon">&#128194;</span> Start Dataset Indexing
+      </button>
+      <div class="success-banner hidden" id="index-success">
+        <span>&#128640;</span> Indexing started in background. Check Stats for progress.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- STATS SECTION -->
+<section class="section" id="stats-section">
+  <div class="section-header">
+    <h2>Database Statistics</h2>
+    <p>Live overview of the vector database and search accuracy</p>
+  </div>
+
+  <div class="stats-grid" id="stats-grid">
+    <div class="stat-card">
+      <div class="stat-icon">&#128444;</div>
+      <div class="stat-value" id="s-total">--</div>
+      <div class="stat-label">Total Images</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">&#129504;</div>
+      <div class="stat-value" id="s-vectors">--</div>
+      <div class="stat-label">Qdrant Vectors</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">&#127991;</div>
+      <div class="stat-value" id="s-cats">--</div>
+      <div class="stat-label">Categories</div>
+    </div>
+    <div class="stat-card accuracy-card">
+      <div class="stat-icon">&#128077;</div>
+      <div class="stat-value" id="s-precision">--</div>
+      <div class="stat-label">Precision (user-rated)</div>
+    </div>
+    <div class="stat-card accuracy-card">
+      <div class="stat-icon">&#128202;</div>
+      <div class="stat-value" id="s-feedback">--</div>
+      <div class="stat-label">Feedback Votes</div>
+    </div>
+  </div>
+
+  <!-- Accuracy by category -->
+  <div class="accuracy-breakdown hidden" id="accuracy-breakdown">
+    <h4 class="breakdown-title">Precision by Category</h4>
+    <div class="accuracy-grid" id="accuracy-grid"></div>
+  </div>
+
+  <div class="category-breakdown" id="category-breakdown"></div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="footer-inner">
+    <span class="brand-icon">&#9672;</span>
+    <span>GemSearch &middot; AI Jewellery Visual Search &middot; Powered by OpenCLIP + Qdrant</span>
+  </div>
+</footer>
+
+<!-- LIGHTBOX MODAL -->
+<div class="lightbox hidden" id="lightbox" onclick="closeLightbox(event)">
+  <div class="lightbox-inner">
+    <button class="lightbox-close" onclick="closeLightbox()">&#10005;</button>
+    <div class="lightbox-img-wrap">
+      <img id="lightbox-img" alt="Full size" />
+    </div>
+    <div class="lightbox-info">
+      <div class="lightbox-filename" id="lightbox-filename"></div>
+      <div class="lightbox-meta">
+        <span class="result-card-category" id="lightbox-category"></span>
+        <span class="similarity-label" id="lightbox-similarity"></span>
+      </div>
+      <div class="lightbox-actions">
+        <button class="btn btn-primary" id="lightbox-search-btn">
+          <span class="btn-icon">&#128269;</span> Find Similar to This
+        </button>
+        <a class="btn btn-ghost" id="lightbox-download" download target="_blank">
+          &#8595; View Full Size
+        </a>
+      </div>
+      <div class="lightbox-feedback">
+        <span style="font-size:0.8rem;color:var(--text-dim)">Was this relevant?</span>
+        <button class="btn-feedback" id="lightbox-yes" onclick="lightboxFeedback(true)">&#128077; Yes</button>
+        <button class="btn-feedback" id="lightbox-no"  onclick="lightboxFeedback(false)">&#128078; No</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
+<script src="/frontend/script.js"></script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+# Secrets — NEVER commit real credentials
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+
+# Data / runtime
+uploads/
+dataset/
+qdrant_storage/
+jewellery.db
+setup_dataset.log
+*.log
+*.db
+
+# Qdrant binary
+qdrant.exe
+qdrant
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
