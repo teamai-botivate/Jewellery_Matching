@@ -66,6 +66,10 @@ QDRANT_HOST        = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT        = int(os.getenv("QDRANT_PORT", "6333"))
 QDRANT_URL         = os.getenv("QDRANT_URL", "")
 QDRANT_API_KEY     = os.getenv("QDRANT_API_KEY", "")
+
+CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME", "")
+CLOUDINARY_API_KEY    = os.getenv("CLOUDINARY_API_KEY", "")
+CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET", "")
 QDRANT_RETRIES     = 6
 QDRANT_RETRY_DELAY = 3
 
@@ -677,6 +681,32 @@ async def search(file: UploadFile = File(...)):
     }
 
 
+def _upload_to_cloudinary(image_data: bytes, filename: str) -> str:
+    """Upload image bytes to Cloudinary and return the permanent secure URL.
+    Returns empty string if Cloudinary is not configured."""
+    if not (CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET):
+        return ""
+    try:
+        import cloudinary
+        import cloudinary.uploader
+        cloudinary.config(
+            cloud_name=CLOUDINARY_CLOUD_NAME,
+            api_key=CLOUDINARY_API_KEY,
+            api_secret=CLOUDINARY_API_SECRET,
+        )
+        public_id = f"gemsearch/{Path(filename).stem}"
+        result = cloudinary.uploader.upload(
+            image_data,
+            public_id=public_id,
+            overwrite=True,
+            resource_type="image",
+        )
+        return result["secure_url"]
+    except Exception as exc:
+        log.warning("Cloudinary upload failed, falling back to local: %s", exc)
+        return ""
+
+
 @app.post("/admin/upload")
 async def admin_upload(
     file:     UploadFile = File(...),
@@ -700,9 +730,13 @@ async def admin_upload(
 
     metal_color = detect_metal_color(img)
     embedding   = generate_embedding(img)
-    url_path    = f"/uploads/{unique_name}"
-    row_id      = db_insert(unique_name, url_path, category, "admin")
-    point_id    = str(uuid.uuid5(uuid.NAMESPACE_URL, url_path))
+
+    # Try Cloudinary first (permanent URL) — fall back to local /uploads/
+    cloudinary_url = _upload_to_cloudinary(data, unique_name)
+    url_path       = cloudinary_url if cloudinary_url else f"/uploads/{unique_name}"
+
+    row_id   = db_insert(unique_name, url_path, category, "admin")
+    point_id = str(uuid.uuid5(uuid.NAMESPACE_URL, url_path))
 
     qdrant_upsert(
         point_id=point_id,
@@ -726,6 +760,7 @@ async def admin_upload(
         "db_id":       row_id,
         "point_id":    point_id,
         "rembg_used":  rembg_applied,
+        "cloudinary":  bool(cloudinary_url),
         "message":     "Image indexed and immediately searchable",
     }
 
