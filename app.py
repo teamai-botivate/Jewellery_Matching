@@ -380,7 +380,7 @@ def init_qdrant():
                 log.info("Qdrant collection '%s' ready (dim=%d)", COLLECTION_NAME, emb_dim)
 
             qdrant = client
-            log.info("Qdrant connected: %s:%d", QDRANT_HOST, QDRANT_PORT)
+            log.info("Qdrant connected: %s", QDRANT_URL if QDRANT_URL else f"{QDRANT_HOST}:{QDRANT_PORT}")
             return
 
         except Exception as exc:
